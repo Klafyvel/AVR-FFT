@@ -1,12 +1,11 @@
-#include <math.h> // M_PI, sin, cos, sqrt
-
 #include "data.h"
 
 int N = 256;
 float frequency = 44000; // Actually useless for our test.
+byte *buffer;
 
 float sines[] = {
-  0,            // sin(-2π)
+  0,            // sin(-2π) (Actually never used)
   0,            // sin(-π)
  -1.0,          // sin(-π/2)
  -0.70710677,   // sin(-π/4)
@@ -18,7 +17,7 @@ float sines[] = {
  -0.012271538   // sin(-π/256)
 };
 float two_sines_sq[] = {
- 0,             // 2sin²(-2π) 
+ 0,             // 2sin²(-2π) (Actually never used)
  0,             // 2sin²(-π) 
  2.0,           // 2sin²(-π/2) 
  1.0,           // 2sin²(-π/4) 
@@ -35,46 +34,43 @@ unsigned long timestart;
 unsigned long timestop;
 unsigned long totaltime;
 
-void(* reset) (void) = 0; //declare reset function @ address 0
-
 void setup() 
 {
   Serial.begin(115200);  
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
-  Serial.println("FFT test program.");
-  Serial.println(N, DEC);
-  // We can now start the FFT calculation !
-  timestart = micros();
-
-  fft(data, N);
-  modulus(data, N, frequency);
-
-  timestop = micros();
-  totaltime = timestop-timestart;
-  Serial.println(N, DEC);
-  Serial.println("result");
-
-  // Then we send back the data to the computer.
-
-  for(int i=0; i<N; i++) {
-    Serial.println(((unsigned long*)data)[i], HEX);
   }
-  // And finally we write the execution time.
-  Serial.println("Time");
-  Serial.println(totaltime, DEC);
-  Serial.println("done");
-}
 void loop() {
-  
-  delay(500);
+  if (Serial.available() > 0) {
+    buffer = (byte*)(&N);
+    Serial.readBytes(buffer, sizeof(int));
+    Serial.write(buffer, sizeof(int));
+    // We can now start the FFT calculation !
+    timestart = micros();
+
+    fft(data, N);
+    modulus(data, N, frequency);
+
+    timestop = micros();
+    totaltime = timestop-timestart;
+
+    // Then we send back the data to the computer.
+    Serial.write((byte*)data, sizeof(float)*N);
+    // And finally we write the execution time.
+    buffer = (byte*)(&totaltime);
+    Serial.write(buffer, sizeof(unsigned long));
+  }
+  else {
+    Serial.println("ready");
+  }
+  delay(100);
 }
 
 /* This is a bit uggly and can be replaced efficiently if we 
    always have the same size of array.
    */
-uint8_t bit_reverse(uint8_t nbits, uint8_t val) {
+uint8_t bit_reverse(const uint8_t nbits, uint8_t val) {
   switch(nbits) {
     case 8:
       val = bit_reverse(4, (val&0xf0)>>4) | (bit_reverse(4, val&0x0f)<<4);
@@ -102,11 +98,6 @@ uint8_t bit_reverse(uint8_t nbits, uint8_t val) {
   }
   return val;
 }
-
-/* float unsave_divide_by_two(float x) {
-  unsigned long i = *(unsigned long*) &x;
-
-} */
 
 void fft(float x[], const int size) {
   if (size == 1)
@@ -196,9 +187,9 @@ void fft(float x[], const int size) {
         b = x[((k+n_1)<<1)+1];
         c = x[k<<1];
         d = x[(k<<1)+1];
-        k1 = cj * ( a  + b  );
-        k2 = a  * ( sj - cj );
-        k3 = b  * ( cj + sj );
+        k1 = floatmul(cj , ( a  + b ));
+        k2 = floatmul(a , (sj - cj));
+        k3 = floatmul(b , (cj + sj));
         tmp = k1 - k3;
         x[k<<1]           = c + tmp; 
         x[(k+n_1)<<1]     = c - tmp; 
@@ -208,8 +199,8 @@ void fft(float x[], const int size) {
       }
       /* We calculate the next cosine and sine */
       tmp = cj;
-      cj = cj - (alpha*cj + beta*sj);
-      sj = sj - (alpha*sj - beta*tmp);
+      cj = cj - (floatmul(alpha, cj) + floatmul(beta, sj));
+      sj = sj - (floatmul(alpha, sj) - floatmul(beta, tmp));
     }
   }
 
@@ -226,25 +217,134 @@ void fft(float x[], const int size) {
        step of the loop that was skipped.
     */
     tmp = cj;
-    cj = cj - (alpha*cj + beta*sj);
-    sj = sj - (alpha*sj - beta*tmp);
+    cj = cj - (floatmul(alpha, cj) + floatmul(beta, sj));
+    sj = sj - (floatmul(alpha, sj) - floatmul(beta, tmp));
     
     a = x[j<<1] + x[(half_size-j)<<1];
     b = x[(j<<1)+1] - x[((half_size-j)<<1)+1];
     c = -x[(j<<1)+1] - x[((half_size-j)<<1)+1];
     d = x[j<<1] - x[(half_size-j)<<1];
-    k1 = cj * (c + d);
-    k2 = c * (sj - cj);
-    k3 = d * (cj + sj);
+    k1 = floatmul(cj , (c + d));
+    k2 = floatmul(c , (sj - cj));
+    k3 = floatmul(d , (cj + sj));
 
     tmp = k1 - k3;
-/* TODO: on doit pouvoir optimiser le *0.5 en opérations bit à bit */
-    x[j<<1]                 = ( a - tmp ) * 0.5;
-    x[(half_size-j)<<1]     = ( a + tmp ) * 0.5; 
+    x[j<<1]                 = half( a - tmp );
+    x[(half_size-j)<<1]     = half( a + tmp);
     tmp = k1 + k2;
-    x[(j<<1)+1]             = ( b - tmp ) * 0.5;
-    x[((half_size-j)<<1)+1] = (-b - tmp ) * 0.5;
+    x[(j<<1)+1]             = half( b - tmp);
+    x[((half_size-j)<<1)+1] = half(-b - tmp);
   }
+}
+
+/* A fast (and not-so-crapy™) implementation of float multiplication. Sadly, it is not
+   precise enough to calculate sines and cosines.
+   */
+float floatmul(float a, float b) {
+  float result = 0;
+
+  asm (
+    /* First step : manage the sign of the product, and store it in flag T.*/
+    "mov __tmp_reg__,%D[a]" "\n\t"
+    "eor __tmp_reg__,%D[b]" "\n\t"
+    "bst __tmp_reg__,7" "\n\t"
+    /* Second step : prepare the mantissa under the 1.7 form, and isolate the exponents. */
+    /* We copy the high byte of a's mantissa in register B of the result,
+       and put it in the 1.7 form.
+       */
+    "mov %B[result],%C[a]" "\n\t"
+    "ori %B[result],0x80" "\n\t"
+    /* Same thing as before for b's mantissa. */
+    "mov %A[result],%C[b]" "\n\t"
+    "ori %A[result],0x80" "\n\t"
+    /* Copy a's exponent to register D of the result. */
+    "mov %D[result],%D[a]" "\n\t"
+    "mov __tmp_reg__,%C[a]" "\n\t"
+    "lsl __tmp_reg__" "\n\t"
+    "rol %D[result]" "\n\t"
+    /* Check for zero */
+    "cpi %D[result], 0" "\n\t"
+    "breq result_zero_%=" "\n\t"
+    /* Add b's exponent to D register of the result. */
+    "mov %C[result],%D[b]" "\n\t"
+    "mov __tmp_reg__,%C[b]" "\n\t"
+    "lsl __tmp_reg__" "\n\t"
+    "rol %C[result]" "\n\t"
+    /* Check for zero */
+    "cpi %C[result], 0" "\n\t"
+    "breq result_zero_%=" "\n\t"
+    "jmp result_not_zero_%=" "\n\t"
+    "result_zero_%=:" "\n\t"
+    "ldi %A[result], 0" "\n\t"
+    "ldi %B[result], 0" "\n\t"
+    "ldi %C[result], 0" "\n\t"
+    "ldi %D[result], 0" "\n\t"
+    "jmp clear_and_exit_%=" "\n\t"
+    "result_not_zero_%=:" "\n\t"
+    "add %D[result],%C[result]" "\n\t"
+    /* Now is the right time to remove the bias, to avoid overflow. */
+    "subi %D[result],0x7f" "\n\t"
+    /* Third step : multiply the mantissas. */
+    "fmul %A[result], %B[result]" "\n\t" 
+    /* save the result in registers A and B of the result. */
+    "movw %A[result], __tmp_reg__" "\n\t" 
+    /* Fourth step : overcome possible normalization issues. 
+       We only need to perform this normalization once.
+     */
+    "brcs carry_set_%=" "\n\t"
+    "lsl %A[result]" "\n\t"
+    "rol %B[result]" "\n\t"
+    "dec %D[result]" "\n\t"
+    /* Fifth step: now, we should have the right exponent in register D and the normalized
+       mantissa in registers A and B, and the sign bit in flag T. Time to rebuild everything.
+       */
+    "carry_set_%= : inc %D[result]" "\n\t"
+    /* First, copy the mantissa from registers A and B to registers B and C.
+       Note : we don't clean register A afterwards, this means we will have some remains
+       of the computation, but we chose to live with that risk.
+       We could use the following instruction to avoid that : clr %A[result] .
+     */
+    "mov %C[result],%B[result]" "\n\t"
+    "mov %B[result],%A[result]" "\n\t"
+    "clr %A[result]" "\n\t"
+    /* Then we right-shift everything to make room for the sign bit. */
+    "lsr %D[result]" "\n\t"
+    "ror %C[result]" "\n\t"
+    "ror %B[result]" "\n\t"
+    "ror %A[result]" "\n\t"
+    /* And we copy it. */
+    "bld %D[result],7" "\n\t"
+    /* clear __zero_reg__ */
+    "clear_and_exit_%=:" "\n\t"
+    "clr __zero_reg__" "\n\t"
+    :
+    [result]"+a"(result):
+    [a]"r"(a),[b]"r"(b)
+  );
+
+  return result;
+}
+
+inline float half(float x) {
+  asm(
+    /* First store to __tmp_reg__ the exponent */
+    "mov __tmp_reg__,%D[x]" "\n\t"
+    "mov __zero_reg__,%C[x]" "\n\t"
+    "lsl __zero_reg__" "\n\t"
+    "rol __tmp_reg__" "\n\t"
+    /* Then decrement it */
+    "dec __tmp_reg__" "\n\t"
+    /* And put it back */
+    "lsl %D[x]" "\n\t" // store sign in carry
+    "ror __tmp_reg__" "\n\t" // put sign in __tmp_reg__ while puting bit 0 of exponent in carry
+    "ror __zero_reg__" "\n\t" // put bit 0 of exponent in zero_reg 7th bit
+    "mov %C[x], __zero_reg__" "\n\t"
+    "mov %D[x], __tmp_reg__" "\n\t"
+    "clr __zero_reg__" "\n\t"
+    :
+    [x]"+a"(x):
+     );
+  return x;
 }
 
 /* 

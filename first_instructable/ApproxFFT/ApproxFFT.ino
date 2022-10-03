@@ -15,8 +15,13 @@ byte RSSdata[20]={7,6,6,5,5,5,4,4,4,4,3,3,3,3,3,3,3,2,2,2};
 
 // The code modified by klafyvel starts here
 #include "data.h"
-int N = 256;
+int N = 4;
 float frequency = 44000; // Actually useless for our test.
+
+// I want to get the actual data, so I need the scale as well
+byte scale;
+
+byte *buffer;
 
 // our timer
 unsigned long timestart;
@@ -29,30 +34,34 @@ void setup()
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
-  Serial.println("FFT test program.");
-  Serial.println(N, DEC);
-  // We can now start the FFT calculation !
-  timestart = micros();
-
-  Approx_FFT(data, N, frequency);
-
-  timestop = micros();
-  totaltime = timestop-timestart;
-  Serial.println("result");
-
-  // Then we send back the data to the computer.
-
-  for(int i=0; i<N; i++) {
-    Serial.println(data[i], DEC);
-  }
-  // And finally we write the execution time.
-  Serial.println("Time");
-  Serial.println(totaltime, DEC);
-  Serial.println("done");
 }
 
 void loop() {
-  delay(500);
+  if (Serial.available() > 0) {
+    buffer = (byte*)(&N);
+    Serial.readBytes(buffer, sizeof(int));
+    Serial.write(buffer, sizeof(int));
+    // We can now start the FFT calculation !
+    timestart = micros();
+
+    Approx_FFT(data, N, frequency);
+
+    timestop = micros();
+    totaltime = timestop-timestart;
+
+    // Then we send back the data to the computer.
+    Serial.write((byte*)data, sizeof(int)*N);
+    // Then the scale.
+    buffer = &scale;
+    Serial.write(buffer, sizeof(byte));
+    // And finally we write the execution time.
+    buffer = (byte*)(&totaltime);
+    Serial.write(buffer, sizeof(unsigned long));
+  }
+  else {
+    Serial.println("ready");
+  }
+  delay(100);
 }
 
 // The code modified by klafyvel stops here.
@@ -85,7 +94,8 @@ float Approx_FFT(int in[],int N,float Frequency)
 { 
   int a,c1,f,o,x,data_max,data_min=0;
   long data_avg,data_mag,temp11;         
-  byte scale,check=0;
+  byte check=0;
+  scale = 0;
 
   data_max=0;
   data_avg=0;

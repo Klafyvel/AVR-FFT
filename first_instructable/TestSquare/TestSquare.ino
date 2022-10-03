@@ -2,99 +2,89 @@ float x,y;
 float r;
 unsigned long loops;
 
+#define BIAS_MUL 0
+
 float floatmul(float a, float b) {
+  float result = 0;
 
-  /*
-TODO: tout passer en assembleur, parce que là on a des optimisations sauvages de GCC.
-*/
-  /* On réinterprète a et b en entiers de 32 bits pour pouvoir tranquillement
-     sélectionner le signe, l'exposant et le bout de mantisse qui nous intéresse.
-     */
-  uint32_t ia = *(uint32_t*) &a;
-  uint32_t ib = *(uint32_t*) &b;
-  /* Serial.print("ia = ");
-  Serial.println(ia, HEX);
-  Serial.print("ib = ");
-  Serial.println(ib, HEX); */
-  uint16_t ea = (ia >> 23) & 0xff;
-  uint16_t eb = (ib >> 23) & 0xff;
-  /* Serial.print("ea = ");
-  Serial.println(ea, HEX);
-  Serial.print("eb = ");
-  Serial.println(eb, HEX); */
-  /* On va utiliser la capacité de calcul en virgule fixe de notre processeur,
-     donc on passe la mantisse en représentation 1.7 non signée.
-     */
-  uint8_t fa = ((ia >> 16) & 0xff) | 0x80;
-  /* Serial.print("fa = ");
-  Serial.println(fa, HEX); */
-  uint8_t fb = ((ib >> 16) & 0xff) | 0x80;
-  /* Serial.print("fb = ");
-  Serial.println(fb, HEX); */
-  /* Pareil pour le résultat */
-  float result = 0.0;
-  uint32_t* iresult = (uint32_t*) & result;
-  /* Serial.print("iresult = ");
-  Serial.println(*iresult, HEX); */
-  /* Première approximation (avant normalisation) de l'exposant */
-  uint16_t e = ea + eb - 127; 
-  /* Serial.print("e = ");
-  Serial.println(e, HEX); */
-  
-  /* Une variable pour stocker le résultat de la multiplication des mantisses.
-     Pour rappel la multiplication de deux nombres en représentation 1.7 est un
-     nombre en représentation 1.15
-     */
-  uint16_t tmp = 0;
-
-  /* Do fractional multiply of the two 16-bits mantissa */
   asm (
-    "tst %2" "\n\t"
-    "breq runaway_zero_%=" "\n\t"
-    "tst %3" "\n\t"
-    "breq runaway_zero_%=" "\n\t"
-    "fmul %2, %3" "\n\t" // Multiplication de la mantisse
-    "movw %0, r0" "\n\t" // on sauvegarde le résultat de la multiplication dans r2
-    /* Il reste encore à normaliser. On a deux situations : 
-          * Si la retenue est non nulle, alors notre résultat est de la forme 
-          (en binaire) 11.abcedfghijklmno, donc notre fonction devrait renvoyer 
-          quelque chose comme 1.1abcdef et ajouter 1 à l'exposant.
-          * Si la retenue est nulle, notre résultat est de la forme 0.000abcdefghijkl,
-          et notre fonction devrait renvoyer quelque chose comme a.bcdefgh. Ici le 
-          nombre de zéros initiaux est arbitraire.
-     */
-    /* Si on a une retenue, on branche */
-    "test_carry_%=: " "brcs carry_set_%=" "\n\t" 
-    /* Sinon on ajoute 1 à l'exposant */
-    "inc %1" "\n\t" 
-    /* Puis on shift la mantisse. Si le MSB était un 1, cela va mettre le bit
-     de la retenue à 1.
-     */
-    "lsl %A0" "\n\t"
-    "rol %B0" "\n\t"
-    /* Et on retourne au test de retenue. */
-    "rjmp test_carry_%=" "\n\t"
-    /* Quand on arrive là, on a une retenue, donc un nombre de la forme 
-       1a.bcdefghijklmnop. 
-       Il reste à décrémenter l'exposant et renvoyer la mantisse
-       (1.)abcdefghijklmnop.
+    /* First step : manage the sign of the product, and store it in flag T.*/
+    "mov __tmp_reg__,%D[a]" "\n\t"
+    "eor __tmp_reg__,%D[b]" "\n\t"
+    "bst __tmp_reg__,7" "\n\t"
+    /* Second step : prepare the mantissa under the 1.7 form, and isolate the exponents. */
+    /* We copy the high byte of a's mantissa in register B of the result,
+       and put it in the 1.7 form.
        */
-    "carry_set_%=: " "dec %1" "\n\t"
-    /* Un échappatoire quand on a une mantisse nulle */
-    "runaway_zero_%=: " "\n\t"
+    "mov %B[result],%C[a]" "\n\t"
+    "ori %B[result],0x80" "\n\t"
+    /* Copy a's exponent to register D of the result. */
+    "mov %D[result],%D[a]" "\n\t"
+    "mov __tmp_reg__,%C[a]" "\n\t"
+    "lsl __tmp_reg__" "\n\t"
+    "rol %D[result]" "\n\t"
+    /* Now is the right time to remove the bias, to avoid overflow. */
+    "subi %D[result],0x7f" "\n\t"
+    /* Same thing as before for b's mantissa. */
+    "mov %A[result],%C[b]" "\n\t"
+    "ori %A[result],0x80" "\n\t"
+    /* Add b's exponent to D register of the result. */
+    "mov __zero_reg__,%D[b]" "\n\t"
+    "mov __tmp_reg__,%C[b]" "\n\t"
+    "lsl __tmp_reg__" "\n\t"
+    "rol __zero_reg__" "\n\t"
+    "add %D[result],__zero_reg__" "\n\t"
+    /* Third step : multiply the mantissas. */
+    "fmul %A[result], %B[result]" "\n\t" 
+    /* save the result in registers A and B of the result. */
+    "movw %A[result], __tmp_reg__" "\n\t" 
+    /* Fourth step : overcome possible normalization issues. 
+       We only need to perform this normalization once.
+     */
+    "brcs carry_set_%=" "\n\t"
+    "lsl %A[result]" "\n\t"
+    "rol %B[result]" "\n\t"
+    "dec %D[result]" "\n\t"
+    /* Fifth step: now, we should have the right exponent in register D and the normalized
+       mantissa in registers A and B, and the sign bit in flag T. Time to rebuild everything.
+       */
+    "carry_set_%= : inc %D[result]" "\n\t"
+    /* First, copy the mantissa from registers A and B to registers B and C.
+       Note : we don't clean register A afterwards, this means we will have some remains
+       of the computation, but we chose to live with that risk.
+       We could use the following instruction to avoid that : clr %A[result] .
+     */
+    "mov %C[result],%B[result]" "\n\t"
+    "mov %B[result],%A[result]" "\n\t"
+    "clr %A[result]" "\n\t"
+    /* Then we right-shift everything to make room for the sign bit. */
+    "lsr %D[result]" "\n\t"
+    "ror %C[result]" "\n\t"
+    "ror %B[result]" "\n\t"
+    "ror %A[result]" "\n\t"
+    /* And we copy it. */
+    "bld %D[result],7" "\n\t"
+    /* Last step : a bit of magic to add a bias. 
+       We use that occasion to clear __zero_reg__.
+     */
+#if BIAS_MUL == 1
+    "ldi r16, 0x16" "\n\t"
+    "add %A[result], r16" "\n\t"
+    "ldi r16, 0xdc" "\n\t"
+    "adc %B[result], r16" "\n\t"
+#endif
+    "clr __zero_reg__" "\n\t"
+#if BIAS_MUL == 1
+    "adc %C[result], __zero_reg__" "\n\t"
+    "adc %D[result], __zero_reg__" "\n\t"
+#endif
     :
-    "+r"(tmp), "+r"(e):
-    "a"(fa), "a"(fb):
+    [result]"+a"(result):
+    [a]"r"(a),[b]"r"(b)
+#if BIAS_MUL == 1
+    :"r16"
+#endif
   );
-  /* Serial.print("tmp = ");
-  Serial.println(tmp, HEX);
-  Serial.print("e = ");
-  Serial.println(e, HEX); */
-
-  /* On reconstruit le résultat, en prenant soin d'avoir le bon signe. */
-  *iresult = ((ia & 0x80000000)^(ib & 0x80000000)) | ((uint32_t)e << 23) | ((uint32_t)tmp<<7);
-  /* Serial.print("iresult = ");
-  Serial.println(*iresult, HEX); */
 
   return result;
 }
@@ -103,43 +93,32 @@ void setup() {
   Serial.begin(115200);
   while(!Serial) {;}
   Serial.println("Float multiply");
+  delay(500);
 
+  unsigned long i,j = 0;
+
+  x = 0.3;
+  y = 2.0;
+  uint32_t* a = (uint32_t*)(&x);
+  uint32_t* b = (uint32_t*)(&y);
+  uint32_t* c = (uint32_t*)(&r);
+
+  for(i=0; i<0x800000; i+=0x10000) {
+    *a = 0x3f800000 | i;
+    for(j=0; j<i; j+=0x10000) {
+      *b = 0x3f800000 | j;
+      Serial.print(*a, HEX);
+      Serial.print(" ");
+      Serial.print(*b, HEX);
+      Serial.print(" ");
+      r = x*y;
+      Serial.print(*c, HEX);
+      Serial.print(" ");
+      r = floatmul(x,y);
+      Serial.println(*c, HEX);
+    }
+  }
 }
 
 void loop() {
-  loops = 0;
-  x = 1.5;
-  r = 2.0;
-  // TCNT0 is the timer used to compute milliseconds and drive PWM0.
-  // It is an 8 bit value that increments every 64 clock cycles and
-  // rolls over from 255 to 0.
-  //
-  // We repeatedly run the test code as the timer goes from 156 through 255
-  // which gives use 64*100 clock cycles.
-  //
-  // In practice this works for timing operations that take from 1 to 
-  // hundreds of clock cycles. The results get a little chunky after that
-  // since the last one will have gone a fair bit past the end period.
-  //
-  while( TCNT0 != 155);        // wait for 155 to start
-  while( TCNT0 == 155);        // wait until 155 ends
-  
-  cli(); // turn off interrupts
-  while( TCNT0 > 150 ) {       // that 150 acknowledges we may miss 0
-    r = floatmul(x, r);
-    loops++;
-  }
-  sei(); // turn interrupts back on
-  Serial.print("loops: ");
-  Serial.print(loops,DEC);
-  Serial.print(" clocks: ");
-  Serial.print( (int) (( 100UL*64UL) / loops) - 8 /* empty loop cost */, DEC);
-  Serial.println();
-  Serial.print("x: ");
-  Serial.print(x);
-  Serial.print("y: ");
-  Serial.print(y);
-  Serial.print("x*y: ");
-  Serial.println(r);
-  delay(2000);
 }

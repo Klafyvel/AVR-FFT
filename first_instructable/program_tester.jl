@@ -8,19 +8,20 @@ function Base.show(io::IO, ::MIME"text/plain", fig::Scene)
     sixel_encode(io, load(fname))
 end
 
-l = 100
-x = range(0,10,length=l)
-
-scatter(x, randn(l) .+ x,
-        figure=(resolution=(400, 300),),
-        axis=(title="CairoMakie in terminal !",)
-       )
 
 list_ports()
 
 ## Setting for the Arduino
 portname = "/dev/ttyACM0"
 baudrate = 115200
+LibSerialPort.open(portname, baudrate) do sp
+    @info "Resetting Arduino"
+    # Reset the Arduino
+    set_flow_control(sp, dtr=SP_DTR_ON)
+    sleep(0.1)
+    sp_flush(sp, SP_BUF_INPUT)
+    set_flow_control(sp, dtr=SP_DTR_OFF)
+end
 
 workdir = pwd()
 
@@ -375,7 +376,110 @@ LibSerialPort.open(portname, baudrate) do sp
 end
 
 
-## Here, I will put a FixedFFT 8 bits, to kick some asses :)
+## Create FixedFFT (8 bits) datasets
+
+fixed8fft_dir = joinpath(workdir, "Fixed8FFT")
+
+function write_data_fixed_8(N)
+    raw_data = make_data(N)[2]
+    raw_data = clamp.(raw_data ./ maximum(raw_data), Q0f7)
+    d = reinterpret.(UInt8, reinterpret.(Int8, Q0f7.(raw_data)))
+    open(joinpath(fixed8fft_dir, "data.h"), write=true) do f
+        write(f, "#ifndef H_DATA\n")
+        write(f, "#define H_DATA\n\n")
+        write(f, "int8_t data[] = {\n")
+        for n ∈ d
+            write(f, "  $(repr(n)),\n")
+        end
+        write(f, "};\n\n")
+        write(f, "#endif H_DATA\n")
+    end
+end
+
+write_data_fixed_8(256);
+
+## FixedCosine 8 bits
+
+fixedcosine8_dir = joinpath(workdir, "FixedCosine")
+fixedcosine8_build = joinpath(fixedcosine8_dir, "build")
+fixedcosine8_ino = joinpath(fixedcosine8_dir, "FixedCosine.ino")
+
+fixedcosine8_build_command = `arduino-cli compile -b arduino:avr:uno -p $portname --build-path "$fixedcosine8_build" -u -v "$fixedcosine8_ino"`
+run(fixedcosine8_build_command)
+
+
+
+LibSerialPort.open(portname, baudrate) do sp
+    @info "Testing FixedCosine 8 bits"
+    # Reset the Arduino
+    set_flow_control(sp, dtr=SP_DTR_ON)
+    sleep(0.1)
+    sp_flush(sp, SP_BUF_INPUT)
+    set_flow_control(sp, dtr=SP_DTR_OFF)
+    data_c = zeros(Q0f7, 127)
+    read!(sp, data_c)
+    data_s = zeros(Q0f7, 127)
+    read!(sp, data_s)
+    lines(data_c)
+    lines!(data_s)
+end
+
+current_figure()
+
+## FixedFFT 8 bits
+
+fixed8fft_build = joinpath(fixed8fft_dir, "build")
+fixed8fft_ino = joinpath(fixed8fft_dir, "FixedFFT.ino")
+
+fixed8fft_build_command = `arduino-cli compile -b arduino:avr:uno -p $portname --build-path "$fixed8fft_build" -u -v "$fixed8fft_ino"`
+run(fixed8fft_build_command)
+
+
+
+fixed8fft_testsizes = [4, 8, 16, 32, 64, 128, 256]
+fixed8fft_results = []
+fixed8fft_time = []
+
+LibSerialPort.open(portname, baudrate) do sp
+    @info "Testing FixedFFT 8 bits"
+    # Reset the Arduino
+    for N in fixed8fft_testsizes
+        set_flow_control(sp, dtr=SP_DTR_ON)
+        sleep(0.1)
+        sp_flush(sp, SP_BUF_INPUT)
+        set_flow_control(sp, dtr=SP_DTR_OFF)
+        st = readline(sp)
+        while st != "ready"
+            @info "Waiting for arduino to be ready"
+            st = readline(sp)
+            @info "Arduino said" st
+            sleep(0.05)
+        end
+        @info "Sending N" N
+        write(sp, N)
+        @info "Awaiting confirmation"
+        n_read = read(sp, Int16)
+        @info "Control" N n_read
+
+        # s = readline(sp)
+        # while s != "done"
+        # @info "Debug said" s
+        # s = readline(sp)
+        # end
+
+        data = zeros(Q0f7, n_read)
+        read!(sp, data)
+        @info "Read data." data
+        time = float(read(sp, UInt32))
+        @info "Read time" time
+        push!(fixed8fft_time, time)
+        # data = repeat(abs.(float.(data[1:2:end]) .+ im .* float.(data[2:2:end])), 2)
+        push!(fixed8fft_results, data)
+        @info "SerialPort status" bytesavailable(sp)
+    end
+
+end
+
 
 ## Checking correctness of my FFTs
 
@@ -398,20 +502,24 @@ f = Figure(resolution=(1200, 800))
 expe_float = nothing
 expe_exact = nothing
 expe_fixed16 = nothing
+expe_fixed8 = nothing
 res = nothing
 dev = Dict([
     "ExactFFT" => Float64[]
     "FloatFFT" => Float64[]
     "Fixed16FFT" => Float64[]
+    "Fixed8FFT" => Float64[]
 ])
 for (i, size) ∈ enumerate(floatfft_testsizes)
     mod_fft = abs.(true_fft[i][1:end÷2])
     float_fft = floatfft_results[i][1:end÷2]
     exact_fft = exactfft_results[i][1:end÷2]
     fixed16_fft = fixed16fft_results[i][1:end÷2]
+    fixed8_fft = fixed8fft_results[i][1:end÷2]
     push!(dev["FloatFFT"], sqrt(sum(abs2.(mod_fft .- float_fft)) / (size - 1)))
     push!(dev["ExactFFT"], sqrt(sum(abs2.(mod_fft .- exact_fft)) / (size - 1)))
     push!(dev["Fixed16FFT"], sqrt(sum(abs2.(mod_fft .- fixed16_fft)) / (size - 1)))
+    push!(dev["Fixed8FFT"], sqrt(sum(abs2.(mod_fft .- fixed8_fft)) / (size - 1)))
     ax = Axis(f[(i+1)÷2, (i+1)%2+1],
         title="Sample size : $size",
         # subtitle="dev(float)=$(round(dev_float, sigdigits=3)), dev(exact)=$(round(dev_exact, sigdigits=3))", 
@@ -421,13 +529,14 @@ for (i, size) ∈ enumerate(floatfft_testsizes)
     expe_float = scatterlines!(normalize(float_fft, Inf), color=colors[1])
     expe_exact = scatterlines!(normalize(exact_fft, Inf), color=colors[3])
     expe_fixed16 = scatterlines!(normalize(fixed16_fft, Inf), color=colors[4])
+    expe_fixed8 = scatterlines!(normalize(fixed8_fft, Inf), color=colors[5])
     res = scatterlines!(normalize(mod_fft, Inf), color=colors[2], marker=:+)
 end
 
 i = length(floatfft_testsizes) + 1
 Legend(f[(i+1)÷2, (i+1)%2+1],
-    [expe_float, expe_exact, expe_fixed16, res],
-    ["Arduino FloatFFT", "Arduino ExactFFT", "Arduino Fixed16FFT", "Julia Float32 FFT"],
+    [expe_float, expe_exact, expe_fixed16, expe_fixed8, res],
+    ["Arduino FloatFFT", "Arduino ExactFFT", "Arduino Fixed16FFT", "Arduino Fixed8FFT", "Julia Float32 FFT"],
     tellwidth=false,
     tellheight=false
 )
@@ -438,10 +547,10 @@ f
 
 ## Plotting time results.
 
-sizes = [approxfft_testsizes, floatfft_testsizes, exactfft_testsizes, fixed16fft_testsizes]
-labels = ["ApproxFFT", "FloatFFT", "ExactFFT", "Fixed16FFT"]
-times = Float32[approxfft_time; floatfft_time; exactfft_time; fixed16fft_time] ./ 1000
-order = invperm(sortperm(vec(maximum([approxfft_time floatfft_time exactfft_time fixed16fft_time], dims=1))))
+sizes = [approxfft_testsizes, floatfft_testsizes, exactfft_testsizes, fixed16fft_testsizes, fixed8fft_testsizes]
+labels = ["ApproxFFT", "FloatFFT", "ExactFFT", "Fixed16FFT",  "Fixed8FFT"]
+times = Float32[approxfft_time; floatfft_time; exactfft_time; fixed16fft_time; fixed8fft_time] ./ 1000
+order = invperm(sortperm(vec(maximum([approxfft_time floatfft_time exactfft_time fixed16fft_time fixed8fft_time], dims=1))))
 groups = vcat([repeat([order[i]], length(t)) for (i,t) in enumerate(sizes)]...) 
 
 positions = map(vcat(sizes...)) do x

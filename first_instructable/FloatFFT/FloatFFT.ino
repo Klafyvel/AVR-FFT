@@ -55,6 +55,8 @@ void loop() {
     timestop = micros();
     totaltime = timestop-timestart;
 
+    Serial.println("done");
+
     // Then we send back the data to the computer.
     Serial.write((byte*)data, sizeof(float)*N);
     // And finally we write the execution time.

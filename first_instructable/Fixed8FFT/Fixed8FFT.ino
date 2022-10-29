@@ -61,10 +61,11 @@ void loop() {
 
     fft(data, N);
     modulus(data, N, frequency);
-    // Serial.println("done");
 
     timestop = micros();
     totaltime = timestop-timestart;
+
+    Serial.println("done");
 
     // Then we send back the data to the computer.
     Serial.write((byte*)data, sizeof(fixed8_t)*N);

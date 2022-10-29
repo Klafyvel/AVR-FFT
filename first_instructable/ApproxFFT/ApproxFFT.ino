@@ -49,11 +49,10 @@ void loop() {
     timestop = micros();
     totaltime = timestop-timestart;
 
+    Serial.println("done");
+
     // Then we send back the data to the computer.
     Serial.write((byte*)data, sizeof(int)*N);
-    // Then the scale.
-    buffer = &scale;
-    Serial.write(buffer, sizeof(byte));
     // And finally we write the execution time.
     buffer = (byte*)(&totaltime);
     Serial.write(buffer, sizeof(unsigned long));

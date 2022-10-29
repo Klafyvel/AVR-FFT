@@ -328,7 +328,6 @@ axislegend(
 fig = current_figure()
 
 save("execution_time_comparison.png", fig)
-fig
 
 ##--
 
@@ -359,4 +358,3 @@ axislegend(
 fig = current_figure()
 
 save("error_comparison.png", fig)
-fig

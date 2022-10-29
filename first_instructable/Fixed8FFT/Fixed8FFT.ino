@@ -172,19 +172,27 @@ uint8_t fft(fixed8_t x[], const int size) {
         */
         // TODO: I might be adding noise with al these intermediary additions.
         // Maybe I can reduce this by just doing the plain additions.
-        a = x[(k+n_1)<<1];
-        b = x[((k+n_1)<<1)+1];
-        c = x[k<<1];
-        d = x[(k<<1)+1];
-        k1 =  fixed_mul_16_8(cj, fixed_add_saturate_8_8(a,  b));
-        k2 =  fixed_mul_8_16(a,  fixed_add_saturate_16_16(sj, -cj));
-        k3 =  fixed_mul_8_16(b,  fixed_add_saturate_16_16(cj, sj));
-        tmp = fixed_add_saturate_8_8(k1, -k3);
-        x[k<<1]           = fixed_add_saturate_8_8(c,   tmp); 
-        x[(k+n_1)<<1]     = fixed_add_saturate_8_8(c,  -tmp); 
-        tmp = fixed_add_saturate_8_8(k1, k2);
-        x[(k<<1)+1]       = fixed_add_saturate_8_8(d,  tmp); 
-        x[((k+n_1)<<1)+1] = fixed_add_saturate_8_8(d, -tmp); 
+        // a = x[(k+n_1)<<1];
+        // b = x[((k+n_1)<<1)+1];
+        // c = x[k<<1];
+        // d = x[(k<<1)+1];
+        // k1 =  fixed_mul_16_8(cj, fixed_add_saturate_8_8(a,  b));
+        // k2 =  fixed_mul_8_16(a,  fixed_add_saturate_16_16(sj, -cj));
+        // k3 =  fixed_mul_8_16(b,  fixed_add_saturate_16_16(cj, sj));
+        // tmp = fixed_add_saturate_8_8(k1, -k3);
+        // x[k<<1]           = fixed_add_saturate_8_8(c,   tmp); 
+        // x[(k+n_1)<<1]     = fixed_add_saturate_8_8(c,  -tmp); 
+        // tmp = fixed_add_saturate_8_8(k1, k2);
+        // x[(k<<1)+1]       = fixed_add_saturate_8_8(d,  tmp); 
+        // x[((k+n_1)<<1)+1] = fixed_add_saturate_8_8(d, -tmp); 
+        a = x[k<<1];
+        b = x[(k<<1)+1];
+        c = x[(k+n_1)<<1];
+        d = x[((k+n_1)<<1)+1];
+        x[k<<1]           = fixed_add_saturate_8_8(a, fixed_add_saturate_8_8(fixed_mul_16_8(cj, c), -fixed_mul_16_8(sj, d))); 
+        x[(k<<1)+1]       = fixed_add_saturate_8_8(b, fixed_add_saturate_8_8(fixed_mul_16_8(sj, c),fixed_mul_16_8(cj, d))); 
+        x[(k+n_1)<<1]     = fixed_add_saturate_8_8(a, fixed_add_saturate_8_8(-fixed_mul_16_8(cj, c), fixed_mul_16_8(sj, d)));
+        x[((k+n_1)<<1)+1] = fixed_add_saturate_8_8(b, -fixed_add_saturate_8_8(fixed_mul_16_8(sj, c), fixed_mul_16_8(cj, d)));
       }
       /* We calculate the next cosine and sine */
       tmp_trigo = cj;
@@ -220,20 +228,51 @@ uint8_t fft(fixed8_t x[], const int size) {
     cj = fixed_add_saturate_16_16(cj, -fixed_add_saturate_16_16(fixed_mul_16_16(alpha, cj),  fixed_mul_16_16(beta, sj)));
     sj = fixed_add_saturate_16_16(sj, -fixed_add_saturate_16_16(fixed_mul_16_16(alpha, sj), -fixed_mul_16_16(beta, tmp_trigo)));
 
-    a = fixed_add_saturate_8_8(x[j<<1], x[(half_size-j)<<1]);
-    b = fixed_add_saturate_8_8(x[(j<<1)+1], -x[((half_size-j)<<1)+1]);
-    c = fixed_add_saturate_8_8(-x[(j<<1)+1], -x[((half_size-j)<<1)+1]);
-    d = fixed_add_saturate_8_8(x[j<<1], -x[(half_size-j)<<1]);
-    k1 = fixed_mul_16_8(cj , fixed_add_saturate_8_8(c, d));
-    k2 = fixed_mul_8_16(c , fixed_add_saturate_16_16(sj, -cj));
-    k3 = fixed_mul_8_16(d , fixed_add_saturate_16_16(cj, sj));
-
-    tmp = fixed_add_saturate_8_8(k1, -k3);
-    x[j<<1]                 = fixed_mul_8_8(fixed_add_saturate_8_8( a, - tmp), FIXED_8_HALF);
-    x[(half_size-j)<<1]     = fixed_mul_8_8(fixed_add_saturate_8_8( a,   tmp), FIXED_8_HALF);
-    tmp = fixed_add_saturate_8_8(k1, k2);
-    x[(j<<1)+1]             = fixed_mul_8_8(fixed_add_saturate_8_8( b, - tmp), FIXED_8_HALF);
-    x[((half_size-j)<<1)+1] = fixed_mul_8_8(fixed_add_saturate_8_8(-b, - tmp), FIXED_8_HALF);
+    // a = fixed_add_saturate_8_8(x[j<<1], x[(half_size-j)<<1]);
+    // b = fixed_add_saturate_8_8(x[(j<<1)+1], -x[((half_size-j)<<1)+1]);
+    // c = fixed_add_saturate_8_8(-x[(j<<1)+1], -x[((half_size-j)<<1)+1]);
+    // d = fixed_add_saturate_8_8(x[j<<1], -x[(half_size-j)<<1]);
+    // k1 = fixed_mul_16_8(cj , fixed_add_saturate_8_8(c, d));
+    // k2 = fixed_mul_8_16(c , fixed_add_saturate_16_16(sj, -cj));
+    // k3 = fixed_mul_8_16(d , fixed_add_saturate_16_16(cj, sj));
+    //
+    // tmp = fixed_add_saturate_8_8(k1, -k3);
+    // x[j<<1]                 = fixed_mul_8_8(fixed_add_saturate_8_8( a, - tmp), FIXED_8_HALF);
+    // x[(half_size-j)<<1]     = fixed_mul_8_8(fixed_add_saturate_8_8( a,   tmp), FIXED_8_HALF);
+    // tmp = fixed_add_saturate_8_8(k1, k2);
+    // x[(j<<1)+1]             = fixed_mul_8_8(fixed_add_saturate_8_8( b, - tmp), FIXED_8_HALF);
+    // x[((half_size-j)<<1)+1] = fixed_mul_8_8(fixed_add_saturate_8_8(-b, - tmp), FIXED_8_HALF);
+    a = x[j<<1];
+    b = x[(j<<1)+1];
+    c = x[(half_size-j)<<1];
+    d = x[((half_size-j)<<1)+1];
+    x[j<<1] = fixed_mul_8_8(fixed_add_saturate_8_8(
+          fixed_add_saturate_8_8(a, c), 
+          fixed_add_saturate_8_8(
+            fixed_add_saturate_8_8(fixed_mul_8_16(b,cj), fixed_mul_8_16(a,sj)), 
+            fixed_add_saturate_8_8(fixed_mul_8_16(d,cj), - fixed_mul_8_16(c,sj)))
+          ), FIXED_8_HALF);
+    x[(j<<1)+1] = fixed_mul_8_8(fixed_add_saturate_8_8(
+          fixed_add_saturate_8_8(b,-d), 
+          fixed_add_saturate_8_8(
+            fixed_add_saturate_8_8(-fixed_mul_8_16(a,cj), fixed_mul_8_16(b,sj)), 
+            fixed_add_saturate_8_8(fixed_mul_8_16(c,cj), - fixed_mul_8_16(d,sj))
+            )
+          ), FIXED_8_HALF);
+    x[(half_size-j)<<1] = fixed_mul_8_8(fixed_add_saturate_8_8(
+          fixed_add_saturate_8_8(a, c), 
+          fixed_add_saturate_8_8(
+            fixed_add_saturate_8_8(-fixed_mul_8_16(d,cj), fixed_mul_8_16(c,sj)), 
+            -fixed_add_saturate_8_8(fixed_mul_8_16(b,cj), fixed_mul_8_16(a,sj))
+            )
+          ), FIXED_8_HALF);
+    x[((half_size-j)<<1)+1] = fixed_mul_8_8(fixed_add_saturate_8_8(
+          fixed_add_saturate_8_8(d, -b), 
+          fixed_add_saturate_8_8(
+            fixed_add_saturate_8_8(fixed_mul_8_16(c,cj), fixed_mul_8_16(d,sj)), 
+            fixed_add_saturate_8_8(-fixed_mul_8_16(a,cj), fixed_mul_8_16(b,sj))
+            )
+          ), FIXED_8_HALF);
   }
   return scale;
 }

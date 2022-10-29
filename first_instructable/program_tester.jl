@@ -232,8 +232,8 @@ function measure_error(label, name, header_size, test_sizes)
             yticklabelsvisible=false,
             # limits=(nothing, nothing, 0, 1.1*Float64(maximum(mod_fft))),
         )
+        res = lines!(ax, target_result, color=colors[2])
         expe = scatterlines!(ax, measured_result, color=colors[1])
-        res = scatterlines!(ax, target_result, color=colors[2], marker=:+)
     end
     i = length(test_sizes) + 1
     Legend(f[(i+1)÷2, (i+1)%2+1],
@@ -242,14 +242,14 @@ function measure_error(label, name, header_size, test_sizes)
         tellwidth=false,
         tellheight=false
     )
-    save("results_$name.png", f)
+    save(joinpath("result_plots", "results_$name.png"), f)
     display(f)
     dev
 end
 
 ##-- Running all the tests
 
-restrict = nothing # :fixed16_fft
+restrict = nothing # :approx_fft
 
 fft_result = DataFrame(label=Symbol[], test_size=Int16[], fft=Float64[], index=Int16[])
 fft_meta_results = DataFrame(label=Symbol[], test_size=Int16[], time=Float64[], error=Float64[])
@@ -352,7 +352,7 @@ axislegend(
     current_axis(),
     [PolyElement(color = colors[g]) for g in getindex.(Ref(groups_dict), sorted_labels)],
     [fft_tests[l].display for l in sorted_labels],
-    position=:lc,
+    position=:rc,
 )
 
 fig = current_figure()

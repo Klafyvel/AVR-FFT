@@ -118,7 +118,7 @@ function make_data(N)
 end
 
 ##-- Plotting the test function just to be sure
-testx, testy = make_data(2048)
+testx, testy = make_data(256)
 
 lines(
     testx, testy,
@@ -249,7 +249,7 @@ end
 
 ##-- Running all the tests
 
-restrict = nothing # :approx_fft
+restrict = nothing 
 
 fft_result = DataFrame(label=Symbol[], test_size=Int16[], fft=Float64[], index=Int16[])
 fft_meta_results = DataFrame(label=Symbol[], test_size=Int16[], time=Float64[], error=Float64[])
@@ -328,6 +328,7 @@ axislegend(
 fig = current_figure()
 
 save("execution_time_comparison.png", fig)
+save("execution_time_comparison.svg", fig)
 
 ##--
 
@@ -352,9 +353,10 @@ axislegend(
     current_axis(),
     [PolyElement(color = colors[g]) for g in getindex.(Ref(groups_dict), sorted_labels)],
     [fft_tests[l].display for l in sorted_labels],
-    position=:rc,
+    position=:cc,
 )
 
 fig = current_figure()
 
 save("error_comparison.png", fig)
+save("error_comparison.svg", fig)

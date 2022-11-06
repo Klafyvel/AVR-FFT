@@ -1,5 +1,9 @@
 /*
+  Fixed8FFT.ino
 
+  Calculate an 8 bits fixed-point FFT.
+
+  Author: Hugo 'klafyvel' Levy-Falk
 */
 #include <math.h> // abs, min, max
 #include "data.h"
@@ -8,7 +12,7 @@ typedef int16_t fixed16_t;
 const fixed16_t FIXED_16_ONE = 0x7fff;
 const fixed16_t FIXED_16_ZERO= 0x0000;
 typedef int8_t fixed8_t;
-const fixed8_t MODULUS_MAGIC = 0x77;
+const fixed8_t MODULUS_MAGIC = 0x03;
 const fixed8_t ONE_OVER_SQRT_TWO = 0x5b;
 const fixed16_t FIXED_8_ONE = 0x7f;
 const fixed16_t FIXED_8_ZERO= 0x00;
@@ -250,10 +254,6 @@ uint8_t bit_reverse(const uint8_t nbits, uint8_t val) {
 }
 
 fixed8_t fixed16_to_fixed8(fixed16_t x) {
-  // uint16_t tmp = (uint16_t)x;
-  // if (tmp & 0xff > 0x7f) {
-  //   tmp = (uint16_t)(fixed_add_saturate_16_16(x, 0x0100));
-  // }
   return (fixed8_t)(x>>8);
 }
 
@@ -373,8 +373,8 @@ fixed8_t fixed_add_saturate_16_8(fixed16_t a, fixed8_t b) {
   return fixed_add_saturate_8_8(fixed16_to_fixed8(a), b);
 }
 
-/* Approximate modulus with an 8% margin error. 
-   See here (http://www.azillionmonkeys.com/qed/sqroot.html#distance)
+/* Approximate modulus with a 5% margin error. 
+   See here (https://klafyvel.me/blog/articles/approximate-euclidian-norm/)
    for why it works.
    */
 float modulus(fixed8_t x[], const int size, float frequency) {
@@ -382,10 +382,12 @@ float modulus(fixed8_t x[], const int size, float frequency) {
   fixed8_t a,b;
   fixed8_t maxi=0;
   for(i=0; i<size/2; i++) {
-    // min((1 / √2)*(|x|+|y|), max (|x|, |y|))
     a = abs(x[2*i]);
     b = abs(x[2*i+1]);
-    x[i] = fixed_mul_8_8(MODULUS_MAGIC, min(fixed_mul_8_8(ONE_OVER_SQRT_TWO, fixed_add_saturate_8_8(a, b)), max(a, b)));
+    x[i] = max(fixed_mul_8_8(ONE_OVER_SQRT_TWO, fixed_add_saturate_8_8(a, b)), max(a, b));
+    // The "magic" multiplicative constant is greater than 1, so we have to use a trick: we instead do
+    // x + (magic-1)x
+    x[i] = fixed_add_saturate_8_8(x[i], fixed_mul_8_8(MODULUS_MAGIC, x[i]));
     /* Oh yeah, and also look for the maximum */
     if(x[i]>maxi) {
       maxi = x[i];

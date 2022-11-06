@@ -1,4 +1,9 @@
 /*
+  Fixed16FFT.ino
+
+  Calculate a 16 bits fixed-point FFT.
+
+  Author: Hugo 'klafyvel' Levy-Falk
 */
 #include <math.h> // abs, min, max
 #include "data.h"
@@ -9,10 +14,8 @@ typedef int16_t fixed_t;
 const fixed_t FIXED_ONE = 0x7fff;
 const fixed_t FIXED_ZERO= 0x0000;
 const fixed_t FIXED_HALF = 0x4000;
-const fixed_t MODULUS_MAGIC = 0x76a1;
+const fixed_t MODULUS_MAGIC = 0x0347;
 const fixed_t ONE_OVER_SQRT_TWO = 0x5a82;
-
-const int CHUNK = 256;
 
 fixed_t sines[] = {
   0x0000, // sin(-π)
@@ -91,6 +94,7 @@ uint8_t fft(fixed_t x[], const int size) {
   fixed_t tmp,a,b,c,d,k1,k2,k3;
   /* Will store angles, and recursion values for cosine calculation */
   fixed_t alpha,beta,cj,sj;
+  bool scale_required = false;
 
   uint8_t half_size = size >> 1;
 
@@ -127,7 +131,11 @@ uint8_t fft(fixed_t x[], const int size) {
       x[(j<<1)+1] = tmp;
     }
   }
-
+  for(i=0; i<half_size && !scale_required; ++i){
+    if(x[2*i] < -FIXED_HALF ||x[2*i] > FIXED_HALF || x[2*i+1] > FIXED_HALF || x[2*i+1] < -FIXED_HALF)
+      scale_required = true;
+  }
+  
   /* Actual FFT */
   for(i=0; i<array_num_bits; ++i){
     /* n_1 gives the size of the sub-arrays */
@@ -148,10 +156,17 @@ uint8_t fft(fixed_t x[], const int size) {
     Serial.write((byte*)x, sizeof(fixed_t)*size);
 #endif
 
-    /* Scale down the array of data before the pass, to ensure no overflow happens. */
-    for(j=0;j<half_size;j++) {
-      x[2*j] = fixed_mul(x[2*j], FIXED_HALF);
-      x[2*j+1] = fixed_mul(x[2*j+1], FIXED_HALF);
+    for(j=0; j<half_size && !scale_required; ++j){
+      if(x[2*j] < -FIXED_HALF ||x[2*j] > FIXED_HALF || x[2*j+1] > FIXED_HALF || x[2*j+1] < -FIXED_HALF)
+        scale_required = true;
+    }
+    if(scale_required) {
+      /* Scale down the array of data before the pass, to ensure no overflow happens. */
+      for(j=0;j<half_size;j++) {
+        x[2*j] = fixed_mul(x[2*j], FIXED_HALF);
+        x[2*j+1] = fixed_mul(x[2*j+1], FIXED_HALF);
+      }
+      scale_required = false;
     }
 #if DEBUG
     Serial.print("_step_");
@@ -189,9 +204,17 @@ uint8_t fft(fixed_t x[], const int size) {
     Serial.write((byte*)x, sizeof(fixed_t)*size);
 #endif
 
-  for(j=0;j<half_size;j++) {
-    x[2*j] = fixed_mul(x[2*j], FIXED_HALF);
-    x[2*j+1] = fixed_mul(x[2*j+1], FIXED_HALF);
+  for(j=0; j<half_size && !scale_required; ++j){
+    if(x[2*j] < -FIXED_HALF ||x[2*j] > FIXED_HALF || x[2*j+1] > FIXED_HALF || x[2*j+1] < -FIXED_HALF)
+      scale_required = true;
+  }
+  if(scale_required) {
+    /* Scale down the array of data before the pass, to ensure no overflow happens. */
+    for(j=0;j<half_size;j++) {
+      x[2*j] = fixed_mul(x[2*j], FIXED_HALF);
+      x[2*j+1] = fixed_mul(x[2*j+1], FIXED_HALF);
+    }
+    scale_required = false;
   }
 
 #if DEBUG
@@ -236,16 +259,6 @@ uint8_t fft(fixed_t x[], const int size) {
           (d -b) +
           ((fixed_mul(c,cj) + fixed_mul(d,sj)) + (-fixed_mul(a,cj) + fixed_mul(b,sj)))
           , FIXED_HALF);
-  }
-}
-
-/* This scales down the entire array.
-   TODO: maybe this can be efficiently rewritten in assembly.
-   */
-void scale_down(fixed_t x[], const int size) {
-  uint8_t i;
-  for(i=0; i<size;i++) {
-    x[i] /= 2;
   }
 }
 
@@ -343,8 +356,8 @@ fixed_t fixed_add_saturate(fixed_t a, fixed_t b) {
   return result;
 }
 
-/* Approximate modulus with an 8% margin error. 
-   See here (http://www.azillionmonkeys.com/qed/sqroot.html#distance)
+/* Approximate modulus with a 5% margin error. 
+   See here (https://klafyvel.me/blog/articles/approximate-euclidian-norm/)
    for why it works.
    */
 float modulus(fixed_t x[], const int size, float frequency) {
@@ -352,10 +365,12 @@ float modulus(fixed_t x[], const int size, float frequency) {
   fixed_t a,b;
   fixed_t maxi=0;
   for(i=0; i<size/2; i++) {
-    // min((1 / √2)*(|x|+|y|), max (|x|, |y|))
     a = abs(x[2*i]);
     b = abs(x[2*i+1]);
-    x[i] = fixed_mul(MODULUS_MAGIC, min(fixed_mul(ONE_OVER_SQRT_TWO, fixed_add_saturate(a, b)), max(a, b)));
+    x[i] = max(fixed_mul(ONE_OVER_SQRT_TWO, fixed_add_saturate(a, b)), max(a, b));
+    // The "magic" multiplicative constant is greater than 1, so we have to use a trick: we instead do
+    // x + (magic-1)x
+    x[i] = fixed_add_saturate(x[i], fixed_mul(MODULUS_MAGIC, x[i]));
     /* Oh yeah, and also look for the maximum */
     if(x[i]>maxi) {
       maxi = x[i];

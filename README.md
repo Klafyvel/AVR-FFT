@@ -1,37 +1,41 @@
 # Implementation of the FFT on Arduino
 
+This is the companion repository for my blog post [here](http://klafyvel.me/blog/articles/fft-arduino). You'll find plenty of details there.
+
 This directory contains several trials of implementing efficiently the Fast
 Fourier Transform (FFT) on Arduino. As a comparison, I took [this implementation](https://www.instructables.com/ApproxFFT-Fastest-FFT-Function-for-Arduino/).
 
 If you want to understand the basis of how to implement the FFT, I wrote a small
 tutorial
 [here](https://zestedesavoir.com/tutoriels/3939/jouons-a-implementer-une-transformee-de-fourier-rapide/)
-(english version is [here](https://klafyvel.me/blog/articles/fft-julia/)).
+(English version is [here](https://klafyvel.me/blog/articles/fft-julia/)).
 Currently, here are the benchmarks on the following test signal, with a varying
 number of points.
 
 ![Test signal](./test_signal.png)
 
-![Benchmarks](./execution_time_comparison.png)
+![Benchmarks](./execution_time_comparison.svg)
 
-Below is a list of the different implementation
+![Benchmarks](./error_comparison.svg)
 
-## ExactFFT
+Below is a list of the different implementation.
+
+## `ExactFFT`
 
 This is a direct translation to C++ of the implementation in my tutorial.
 
-## AppoxFFT
+## `ApproxFFT`
+
 This is an implementation of the FFT by user
 [abhilash_patel](https://www.instructables.com/member/abhilash_patel/) on
 [Instructables](https://www.instructables.com/ApproxFFT-Fastest-FFT-Function-for-Arduino/).
 
-It is there for comparison purpose only, as it is not very space-efficient, nor
-very precise.
+It is there for comparison purpose only, as it is not very space-efficient.
 
-## FloatFFT
+## `FloatFFT`
 
 A floating-point implementation of the FFT, using some rewriting of
-multiplications in ExactFFT, and some bit magic to accelerate float operations.
+multiplications in `ExactFFT`, and some bit magic to accelerate float operations.
 
 Featuring, but not limited to :
 
@@ -42,15 +46,14 @@ Featuring, but not limited to :
   (in French);
 * Some rewritings of complex multiplications of ExactFFT using [this method](https://en.wikipedia.org/wiki/Multiplication_algorithm#Complex_number_multiplication);
  
-TODO: Write stuplidly over-engineered optimized multiplication and addition of
-floats to make it faster ?
 
-## FixedFFT
+## `Fixed16FFT`
 
-Not yet implemented, this would be an adaptation of FloatFFT using the built-in
-`fmuls` AVR assembly instruction.
+A 16-bits fixed-point implementation of the FFT on AVR.
 
-TODO: have a look at
-https://gcc.gnu.org/onlinedocs/gcc/AVR-Built-in-Functions.html .
+## `Fixed8FFT`
+
+An 8-bits fixed-point implementation of the FFT on AVR.
+
 
 

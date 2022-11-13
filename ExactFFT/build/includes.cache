@@ -1,0 +1,17 @@
+[
+  {
+    "Sourcefile": null,
+    "Include": "",
+    "Includepath": "/home/klafyvel/.arduino15/packages/arduino/hardware/avr/1.8.4/cores/arduino"
+  },
+  {
+    "Sourcefile": null,
+    "Include": "",
+    "Includepath": "/home/klafyvel/.arduino15/packages/arduino/hardware/avr/1.8.4/variants/standard"
+  },
+  {
+    "Sourcefile": "/home/klafyvel/Documents/projets/dev/fftduino/first_instructable/ExactFFT/build/sketch/ExactFFT.ino.cpp",
+    "Include": "",
+    "Includepath": null
+  }
+]

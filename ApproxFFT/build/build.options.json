@@ -1,0 +1,11 @@
+{
+  "additionalFiles": "..",
+  "builtInToolsFolders": "",
+  "compiler.optimization_flags": "",
+  "customBuildProperties": "",
+  "fqbn": "arduino:avr:uno",
+  "hardwareFolders": "/home/klafyvel/.arduino15/packages",
+  "otherLibrariesFolders": "/home/klafyvel/Arduino/libraries",
+  "runtime.ide.version": "10607",
+  "sketchLocation": "/home/klafyvel/Documents/projets/dev/fftduino/first_instructable/ApproxFFT/ApproxFFT.ino"
+}

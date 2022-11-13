@@ -24,6 +24,8 @@ Below is a list of the different implementation.
 
 This is a direct translation to C++ of the implementation in my tutorial.
 
+![Result of FFT for different input sizes](result_plots/results_ExactFFT.svg)
+
 ## `ApproxFFT`
 
 This is an implementation of the FFT by user
@@ -31,6 +33,8 @@ This is an implementation of the FFT by user
 [Instructables](https://www.instructables.com/ApproxFFT-Fastest-FFT-Function-for-Arduino/).
 
 It is there for comparison purpose only, as it is not very space-efficient.
+
+![Result of FFT for different input sizes](result_plots/results_ApproxFFT.svg)
 
 ## `FloatFFT`
 
@@ -46,14 +50,17 @@ Featuring, but not limited to :
   (in French);
 * Some rewritings of complex multiplications of ExactFFT using [this method](https://en.wikipedia.org/wiki/Multiplication_algorithm#Complex_number_multiplication);
  
+![Result of FFT for different input sizes](result_plots/results_FloatFFT.svg)
 
 ## `Fixed16FFT`
 
 A 16-bits fixed-point implementation of the FFT on AVR.
 
+![Result of FFT for different input sizes](result_plots/results_Fixed16FFT.svg)
+
 ## `Fixed8FFT`
 
 An 8-bits fixed-point implementation of the FFT on AVR.
 
-
+![Result of FFT for different input sizes](result_plots/results_Fixed8FFT.svg)
 
